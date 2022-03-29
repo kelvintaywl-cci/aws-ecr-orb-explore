@@ -83,9 +83,11 @@ commands:
                 ACCOUNT_URL="public.ecr.aws"
                 ECR_COMMAND="ecr-public"
             fi
-
-            if [ -n "${PARAM_PROFILE_NAME}" ]; then
-                set -- "$@" --profile "${PARAM_PROFILE_NAME}"
+            
+            if [ -n "${PARAM_NEW_PROFILE_NAME}" ]; then
+                AWS_PROFILE="${PARAM_NEW_PROFILE_NAME}"
+            elif [ -n "${PARAM_PROFILE_NAME}" ]; then
+                AWS_PROFILE="${PARAM_PROFILE_NAME}"
             fi
 
             if [ -f ~/.docker/config.json ]; then
@@ -94,11 +96,223 @@ commands:
                 aws "${ECR_COMMAND}" get-login-password --region "${REGION}" "$@" | docker login --username AWS --password-stdin "${ACCOUNT_URL}"
             fi
           environment:
-            PARAM_PROFILE_NAME: <<^parameters.new-profile-name>><<parameters.profile-name>><</parameters.new-profile-name>>
+            PARAM_PROFILE_NAME: <<parameters.profile-name>>
+            PARAM_NEW_PROFILE_NAME: <<parameters.new-profile-name>>
             PARAM_PUBLIC_REGISTRY: <<parameters.public-registry>>
             PARAM_REGION: <<parameters.region>>
             PARAM_REGISTRY_ID: <<parameters.registry-id>>
           name: Log into Amazon ECR
+  create-repo:
+    description: Create a new AWS ECR repository.
+    parameters:
+      profile-name:
+        default: default
+        description: AWS profile name to be configured.
+        type: string
+      new-profile-name:
+        default: ""
+        description: Name of new profile associated with role arn.
+        type: string
+      public-registry:
+        default: false
+        description: Set to true if building and pushing an image to a Public Registry on ECR.
+        type: boolean
+      region:
+        default: ${AWS_REGION}
+        description: |
+          AWS region of ECR repository. Defaults to environment variable ${AWS_REGION}
+        type: string
+      repo:
+        description: Name of an Amazon ECR repository
+        type: string
+      repo-scan-on-push:
+        default: true
+        description: Should the created repo be security scanned on push?
+        type: boolean
+    steps:
+      - run:
+          command: |
+            #!/bin/bash
+            REGION=$(eval echo "${PARAM_REGION}")
+            REPO=$(eval echo "${PARAM_REPO}")
+
+            if [ -n "${PARAM_NEW_PROFILE_NAME}" ]; then
+                AWS_PROFILE="${PARAM_NEW_PROFILE_NAME}"
+            elif [ -n "${PARAM_PROFILE_NAME}" ]; then
+                AWS_PROFILE="${PARAM_PROFILE_NAME}"
+            fi
+
+            if [ "$PARAM_PUBLIC_REGISTRY" == "1" ]; then
+                aws ecr-public describe-repositories --region us-east-1 --repository-names "${REPO}" >/dev/null 2>&1 ||
+                    aws ecr-public create-repository --region us-east-1 --repository-name "${REPO}"
+            else
+                aws ecr describe-repositories --region "${REGION}" --repository-names "${REPO}" >/dev/null 2>&1 ||
+                    if [ "$PARAM_REPO_SCAN_ON_PUSH" == "1" ]; then
+                        aws ecr create-repository --region "${REGION}" --repository-name "${REPO}" --image-scanning-configuration scanOnPush=true
+                    else
+                        aws ecr create-repository --region "${REGION}" --repository-name "${REPO}" --image-scanning-configuration scanOnPush=false
+                    fi
+            fi
+          environment:
+            PARAM_PROFILE_NAME: <<parameters.profile-name>>
+            PARAM_NEW_PROFILE_NAME: <<parameters.new-profile-name>>
+            PARAM_PUBLIC_REGISTRY: <<parameters.public-registry>>
+            PARAM_REGION: <<parameters.region>>
+            PARAM_REPO: <<parameters.repo>>
+            PARAM_REPO_SCAN_ON_PUSH: <<parameters.repo-scan-on-push>>
+          name: Create Repository
+  build-image:
+    description: Build a docker image with Docker Buildx
+    parameters:
+      dockerfile:
+        default: Dockerfile
+        description: Name of dockerfile to use. Defaults to Dockerfile.
+        type: string
+      extra-build-args:
+        default: ""
+        description: |
+          Extra flags to pass to docker build. For examples, see https://docs.docker.com/engine/reference/commandline/buildx
+        type: string
+      no-output-timeout:
+        default: 10m
+        description: The amount of time to allow the docker command to run before timing out.
+        type: string
+      path:
+        default: .
+        description: Path to the directory containing your Dockerfile and build context. Defaults to . (working directory).
+        type: string
+      platform:
+        default: linux/amd64
+        description: Platform targets for the docker image, multi arch images. Ex. linux/amd64,linux/arm64.
+        type: string
+      profile-name:
+        default: default
+        description: |
+          AWS profile name to be configured. Only required when skip-when-tags-exist or ecr-login are set to true.
+        type: string
+      new-profile-name:
+        default: default
+        description: |
+          Name of new profile associated with role arn. Only required when skip-when-tags-exist or ecr-login are set to true.
+        type: string
+      public-registry:
+        default: false
+        description: Set to true if building and pushing an image to a Public Registry on ECR.
+        type: boolean
+      push-image:
+        default: true
+        description: Set to false to build an image without pushing to repository.  Defaults to true.
+        type: boolean
+      region:
+        default: ${AWS_REGION}
+        description: |
+          AWS region of ECR repository. Defaults to environment variable ${AWS_REGION}
+        type: string
+      registry-id:
+        default: AWS_ECR_REGISTRY_ID
+        description: |
+          The 12 digit AWS Registry ID associated with the ECR account. This field is required
+        type: env_var_name
+      repo:
+        description: Name of an Amazon ECR repository
+        type: string
+      skip-when-tags-exist:
+        default: false
+        description: Whether to skip image building if all specified tags already exist in ECR
+        type: boolean
+      tag:
+        default: latest
+        description: A comma-separated string containing docker image tags (default = latest)
+        type: string
+    steps:
+      - run:
+          command: |
+            #!/bin/bash
+            REPO=$(eval echo "${PARAM_REPO}")
+            REGION=$(eval echo "${PARAM_REGION}")
+            TAG=$(eval echo "${PARAM_TAG}")
+            ACCOUNT_URL="${!PARAM_REGISTRY_ID}.dkr.ecr.${REGION}.amazonaws.com"
+            ECR_COMMAND="ecr"
+            number_of_tags_in_ecr=0
+            docker_tag_args=""
+
+            IFS="," read -ra PLATFORMS \<<<"${PARAM_PLATFORM}"
+            arch_count=${#PLATFORMS[@]}
+
+            if [ "${PARAM_PUBLIC_REGISTRY}" == "1" ]; then
+              if [ "$arch_count" -gt 1 ]; then
+                echo "AWS ECR does not support multiple platforms for public registries. Please specify only one platform and try again"
+                exit 1
+              fi
+
+              ECR_COMMAND="ecr-public"
+              ACCOUNT_URL="public.ecr.aws/${!PARAM_REGISTRY_ID}"
+            fi
+
+            if [ -n "${PARAM_NEW_PROFILE_NAME}" ]; then
+              AWS_PROFILE="${PARAM_NEW_PROFILE_NAME}"
+            elif [ -n "${PARAM_PROFILE_NAME}" ]; then
+              AWS_PROFILE="${PARAM_PROFILE_NAME}"
+            fi
+
+            IFS="," read -ra DOCKER_TAGS \<<<"${TAG}"
+            for tag in "${DOCKER_TAGS[@]}"; do
+              if [ "${PARAM_SKIP_WHEN_TAGS_EXIST}" = "1" ]; then
+                docker_tag_exists_in_ecr=$(aws "${ECR_COMMAND}" describe-images --registry-id "${!PARAM_REGISTRY_ID}" --region "${REGION}" --repository-name "${REPO}" --query "contains(imageDetails[].imageTags[], '${tag}')")
+                if [ "${docker_tag_exists_in_ecr}" = "1" ]; then
+                  docker pull "${ACCOUNT_URL}/${REPO}:${tag}"
+                  number_of_tags_in_ecr=$((number_of_tags_in_ecr += 1))
+                fi
+              fi
+              docker_tag_args="${docker_tag_args} -t ${ACCOUNT_URL}/${REPO}:${tag}"
+            done
+
+            if [ "${PARAM_SKIP_WHEN_TAGS_EXIST}" = "0" ] || [[ "${PARAM_SKIP_WHEN_TAGS_EXIST}" = "1" && ${number_of_tags_in_ecr} -lt ${#DOCKER_TAGS[@]} ]]; then
+              if [ "${PARAM_PUSH_IMAGE}" == "1" ]; then
+                set -- "$@" --push
+              fi
+
+              if [ -n "$PARAM_EXTRA_BUILD_ARGS" ]; then
+                set -- "$@" "${PARAM_EXTRA_BUILD_ARGS}"
+              fi
+
+              if [ "${PARAM_PUBLIC_REGISTRY}" == "1" ]; then
+                docker buildx build \
+                  -f "${PARAM_PATH}"/"${PARAM_DOCKERFILE}" \
+                  ${docker_tag_args} \
+                  --platform "${PARAM_PLATFORM}" \
+                  --progress plain \
+                  "$@" \
+                  "${PARAM_PATH}"
+              else
+                docker context create builder
+                docker run --privileged --rm tonistiigi/binfmt --install all
+                docker --context builder buildx create --use
+                docker --context builder buildx build \
+                  -f "${PARAM_PATH}"/"${PARAM_DOCKERFILE}" \
+                  ${docker_tag_args} \
+                  --platform "${PARAM_PLATFORM}" \
+                  --progress plain \
+                  "$@" \
+                  "${PARAM_PATH}"
+              fi
+            fi
+          environment:
+            PARAM_DOCKERFILE: <<parameters.dockerfile>>
+            PARAM_EXTRA_BUILD_ARGS: <<parameters.extra-build-args>>
+            PARAM_PATH: <<parameters.path>>
+            PARAM_PLATFORM: <<parameters.platform>>
+            PARAM_PROFILE_NAME: <<parameters.profile-name>>
+            PARAM_NEW_PROFILE_NAME: <<parameters.new-profile-name>>
+            PARAM_PUBLIC_REGISTRY: <<parameters.public-registry>>
+            PARAM_PUSH_IMAGE: <<parameters.push-image>>
+            PARAM_REGION: <<parameters.region>>
+            PARAM_REGISTRY_ID: <<parameters.registry-id>>
+            PARAM_REPO: << parameters.repo >>
+            PARAM_SKIP_WHEN_TAGS_EXIST: <<parameters.skip-when-tags-exist>>
+            PARAM_TAG: << parameters.tag >>
+          name: Build Docker Image with buildx
+          no_output_timeout: <<parameters.no-output-timeout>>
 
 # extracted/ported from aws-ecr
 # WITH modification to use modified ecr-login command above
@@ -275,8 +489,9 @@ jobs:
       - when:
           condition: <<parameters.create-repo>>
           steps:
-            - aws-ecr/create-repo:
-                profile-name: <<^parameters.new-profile-name>><<parameters.profile-name>><</parameters.new-profile-name>>
+            - create-repo:  # modified version
+                profile-name: <<parameters.profile-name>>
+                new-profile-name: <<parameters.new-profile-name>>
                 public-registry: <<parameters.public-registry>>
                 region: <<parameters.region>>
                 repo: <<parameters.repo>>
@@ -286,13 +501,14 @@ jobs:
           steps:
             - run: |
                 docker login -u $<<parameters.dockerhub-username>> -p $<<parameters.dockerhub-password>>
-      - aws-ecr/build-image:
+      - build-image:  # modified version
           dockerfile: <<parameters.dockerfile>>
           extra-build-args: <<parameters.extra-build-args>>
           no-output-timeout: <<parameters.no-output-timeout>>
           path: <<parameters.path>>
           platform: <<parameters.platform>>
-          profile-name: <<^parameters.new-profile-name>><<parameters.profile-name>><</parameters.new-profile-name>>
+          profile-name: <<parameters.profile-name>>
+          new-profile-name: <<parameters.new-profile-name>>
           public-registry: <<parameters.public-registry>>
           push-image: <<parameters.push-image>>
           region: <<parameters.region>>
