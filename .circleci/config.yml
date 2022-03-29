@@ -1,0 +1,21 @@
+version: 2.1
+
+orbs: 
+  aws-ecr: circleci/aws-ecr@8.0.0
+
+workflows:
+  explore:
+    jobs:
+      - aws-ecr/build-and-push-image:
+          dockerfile: Dockerfile
+          executor: aws-ecr/default
+          new-profile-name: ecr-crud  # for IAM role
+          profile-name: default  # for IAM user
+          public-registry: false
+          push-image: true
+          repo: 660990364978.dkr.ecr.us-east-1.amazonaws.com/kelvin-hello-alpine
+          role-arn: 'arn:aws:iam::660990364978:role/kelvin-ecr-crud-role'
+          skip-when-tags-exist: false
+          source-profile: default
+          tag: '${CIRCLE_SHA1}'
+          region: 'us-east-1'
