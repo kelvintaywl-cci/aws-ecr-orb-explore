@@ -314,7 +314,7 @@ workflows:
           profile-name: default  # for IAM user
           public-registry: false
           push-image: true
-          repo: 660990364978.dkr.ecr.us-east-1.amazonaws.com/kelvin-hello-alpine
+          repo: kelvin-hello-alpine
           role-arn: 'arn:aws:iam::660990364978:role/kelvin-ecr-crud-role'
           skip-when-tags-exist: false
           source-profile: default
