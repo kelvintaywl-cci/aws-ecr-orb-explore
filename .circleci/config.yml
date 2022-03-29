@@ -75,6 +75,9 @@ commands:
             ACCOUNT_URL="${!PARAM_REGISTRY_ID}.dkr.ecr.${REGION}.amazonaws.com"
             ECR_COMMAND="ecr"
 
+            # DEBUG
+            env | grep PARAM_
+
             if [ "$PARAM_PUBLIC_REGISTRY" == "1" ]; then
                 REGION="us-east-1"
                 ACCOUNT_URL="public.ecr.aws"
