@@ -94,8 +94,8 @@ commands:
                 aws "${ECR_COMMAND}" get-login-password --region "${REGION}" "$@" | docker login --username AWS --password-stdin "${ACCOUNT_URL}"
             fi
           environment:
-            # use new-profile-name, otherwise fall back to profile-name
-            PARAM_PROFILE_NAME: <<#parameters.new-profile-name>><<parameters.profile-name>><</parameters.new-profile-name>>
+            # force use new-profile-name; not good but
+            PARAM_PROFILE_NAME: <<parameters.new-profile-name>>
             PARAM_PUBLIC_REGISTRY: <<parameters.public-registry>>
             PARAM_REGION: <<parameters.region>>
             PARAM_REGISTRY_ID: <<parameters.registry-id>>
@@ -277,7 +277,7 @@ jobs:
           condition: <<parameters.create-repo>>
           steps:
             - aws-ecr/create-repo:
-                profile-name: <<parameters.profile-name>>
+                profile-name: <<parameters.new-profile-name>>
                 public-registry: <<parameters.public-registry>>
                 region: <<parameters.region>>
                 repo: <<parameters.repo>>
@@ -293,7 +293,7 @@ jobs:
           no-output-timeout: <<parameters.no-output-timeout>>
           path: <<parameters.path>>
           platform: <<parameters.platform>>
-          profile-name: <<parameters.profile-name>>
+          profile-name: <<parameters.new-profile-name>>
           public-registry: <<parameters.public-registry>>
           push-image: <<parameters.push-image>>
           region: <<parameters.region>>
