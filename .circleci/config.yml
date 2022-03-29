@@ -29,7 +29,7 @@ commands:
         description: Name of new profile associated with role arn.
         type: string
       profile-name:
-        default: ""
+        default: default
         description: |
           AWS profile name to be configured.
         type: string
