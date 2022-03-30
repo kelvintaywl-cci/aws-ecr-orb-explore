@@ -214,11 +214,10 @@ workflows:
       - check_ecr_login:
           aws-access-key-id: AWS_ACCESS_KEY_ID
           aws-secret-access-key: AWS_SECRET_ACCESS_KEY
-          context: myContext
           new-profile-name: prodaccess
           profile-name: default
           public-registry: false
-          region: ap-northeast-1
-          registry-id: REGISTRY_ID
-          role-arn: 'arn:aws:iam::638488274222:role/Sw_Techlearn017_InfrMaster'
+          region: us-east-1
+          registry-id: AWS_ECR_REGISTRY_ID
+          role-arn: 'arn:aws:iam::660990364978:role/kelvin-ecr-crud-role'
           source-profile: default
