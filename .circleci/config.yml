@@ -671,3 +671,5 @@ workflows:
           source-profile: default
           tag: '${CIRCLE_SHA1}'
           region: 'us-east-1'
+          pre-steps:
+            - run: echo "BEFORE"
