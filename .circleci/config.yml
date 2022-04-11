@@ -14,7 +14,6 @@ workflows:
           push-image: true
           repo: kelvin-hello-alpine
           skip-when-tags-exist: false
-          profile-name: main
           tag: '${CIRCLE_SHA1}'
           region: 'us-east-1'
           # includes AWS_DEFAULT_REGION, AWS_REGISTRY_ID, AWS_ROLE_ARN
