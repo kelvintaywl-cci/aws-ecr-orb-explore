@@ -239,7 +239,6 @@ jobs:
     - run:
         command: |
           #!/bin/bash
-          set -x
           REGION=$(eval echo "${PARAM_REGION}")
           ACCOUNT_URL="${!PARAM_REGISTRY_ID}.dkr.ecr.${REGION}.amazonaws.com"
           ECR_COMMAND="ecr"
