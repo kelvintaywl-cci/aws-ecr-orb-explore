@@ -8,7 +8,7 @@ jobs:
     machine: true
     environment:
       TOKEN: foobar
-      AWS_ECR_REGISTRY_ID: 123456789012
+      AWS_ECR_REGISTRY_ID: '123456789012'
       AWS_REGION: us-east-1
     steps:
       - checkout
