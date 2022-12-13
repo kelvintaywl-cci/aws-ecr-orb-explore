@@ -9,9 +9,9 @@ orbs:
 jobs:
   install-cli:
     executor: aws-ecr/default
-  steps:
-    - checkout
-    - aws-cli/setup
+    steps:
+      - checkout
+      - aws-cli/setup
 
 workflows:
   main:
