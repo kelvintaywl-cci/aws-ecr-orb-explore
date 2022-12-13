@@ -9,6 +9,8 @@ orbs:
 jobs:
   install-cli:
     executor: aws-ecr/default
+    environment:
+      PREFIX: foobar
     steps:
       - checkout
       - aws-cli/setup
